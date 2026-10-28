@@ -1,0 +1,168 @@
+diff --git a/data/maps/PalletTown_ProfessorOaksLab/scripts.inc b/data/maps/PalletTown_ProfessorOaksLab/scripts.inc
+index 90adf86..8b771e1 100644
+--- a/data/maps/PalletTown_ProfessorOaksLab/scripts.inc
++++ b/data/maps/PalletTown_ProfessorOaksLab/scripts.inc
+@@ -1082,11 +1082,15 @@ PalletTown_ProfessorOaksLab_EventScript_BulbasaurBall::
+ PalletTown_ProfessorOaksLab_EventScript_ConfirmStarterChoice::
+ 	applymovement LOCALID_OAKS_LAB_PROF_OAK, Common_Movement_FaceRight
+ 	waitmovement 0
+-	showmonpic PLAYER_STARTER_SPECIES, 10, 3
+ 	textcolor NPC_TEXT_COLOR_MALE
+-	goto_if_eq PLAYER_STARTER_NUM, 0, PalletTown_ProfessorOaksLab_EventScript_ConfirmBulbasaur
+-	goto_if_eq PLAYER_STARTER_NUM, 1, PalletTown_ProfessorOaksLab_EventScript_ConfirmSquirtle
+-	goto_if_eq PLAYER_STARTER_NUM, 2, PalletTown_ProfessorOaksLab_EventScript_ConfirmCharmander
++	msgbox PalletTown_ProfessorOaksLab_Text_OakMysteryMon, MSGBOX_YESNO
++	goto_if_eq VAR_RESULT, YES, PalletTown_ProfessorOaksLab_EventScript_ChoseStarter
++	goto_if_eq VAR_RESULT, NO, PalletTown_ProfessorOaksLab_EventScript_DeclinedStarterNoPic
++	end
++
++PalletTown_ProfessorOaksLab_EventScript_DeclinedStarterNoPic::
++	call EventScript_RestorePrevTextColor
++	release
+ 	end
+ 
+ PalletTown_ProfessorOaksLab_EventScript_ConfirmBulbasaur::
+@@ -1113,13 +1117,13 @@ PalletTown_ProfessorOaksLab_EventScript_DeclinedStarter::
+ 	end
+ 
+ PalletTown_ProfessorOaksLab_EventScript_ChoseStarter::
+-	hidemonpic
+ 	removeobject VAR_LAST_TALKED
+ 	msgbox PalletTown_ProfessorOaksLab_Text_OakThisMonIsEnergetic
+ 	call EventScript_RestorePrevTextColor
+ 	setflag FLAG_SYS_POKEMON_GET
+ 	setflag FLAG_PALLET_LADY_NOT_BLOCKING_SIGN
+-	givemon PLAYER_STARTER_SPECIES, 5
++	special GiveRandomStarterMon
++	copyvar PLAYER_STARTER_SPECIES, VAR_RESULT
+ 	copyvar VAR_STARTER_MON, PLAYER_STARTER_NUM
+ 	bufferspeciesname STR_VAR_1, PLAYER_STARTER_SPECIES
+ 	message PalletTown_ProfessorOaksLab_Text_ReceivedMonFromOak
+diff --git a/data/maps/PalletTown_ProfessorOaksLab/text.inc b/data/maps/PalletTown_ProfessorOaksLab/text.inc
+index 849a643..1d4802a 100644
+--- a/data/maps/PalletTown_ProfessorOaksLab/text.inc
++++ b/data/maps/PalletTown_ProfessorOaksLab/text.inc
+@@ -118,6 +118,12 @@ PalletTown_ProfessorOaksLab_Text_OakChoosingBulbasaur::
+     .string "So, {PLAYER}, you want to go with\n"
+     .string "the GRASS POKéMON BULBASAUR?$"
+ 
++PalletTown_ProfessorOaksLab_Text_OakMysteryMon::
++    .string "Hmm... I can't tell which POKéMON\n"
++    .string "is inside this one.\p"
++    .string "Fate will decide for you, {PLAYER}.\n"
++    .string "Do you want this POKé BALL?$"
++
+ PalletTown_ProfessorOaksLab_Text_OakThisMonIsEnergetic::
+     .string "This POKéMON is really quite\n"
+     .string "energetic!$"
+diff --git a/data/specials.inc b/data/specials.inc
+index d880bf6..3382b65 100644
+--- a/data/specials.inc
++++ b/data/specials.inc
+@@ -452,4 +452,5 @@ gSpecials::
+ 	def_special UpdateLoreleiDollCollection
+ 	def_special LoopWingFlapSound
+ 	def_special CreateEnemyEventMon
++	def_special GiveRandomStarterMon
+ gSpecialsEnd::
+diff --git a/src/field_specials.c b/src/field_specials.c
+index 08b7ced..e6ae419 100644
+--- a/src/field_specials.c
++++ b/src/field_specials.c
+@@ -2553,3 +2553,96 @@ static void Task_WingFlapSound(u8 taskId)
+     if (data[0] == gSpecialVar_0x8004 - 1)
+         DestroyTask(taskId);
+ }
++
++// ============================================================================
++// KAIZO: starter casuale
++// Impostazioni facili da cambiare:
++// ============================================================================
++#define KAIZO_STARTER_LEVEL        8     // livello dello starter (shiny: +1)
++#define KAIZO_SHINY_ODDS           256   // uno shiny ogni N starter generati
++
++// Specie valide in Gen 3: 1-251 (Gen 1-2) e 277-411 (Gen 3).
++// Le posizioni 252-276 sono segnaposto vuoti e non vanno mai usate.
++static bool8 Kaizo_IsValidSpecies(u16 species)
++{
++    return (species >= SPECIES_BULBASAUR && species <= SPECIES_CELEBI)
++        || (species >= SPECIES_TREECKO && species <= SPECIES_CHIMECHO);
++}
++
++// Mosse escluse dal moveset casuale dello starter (mosse di cura bandite).
++static bool8 Kaizo_IsBannedMove(u16 move)
++{
++    switch (move)
++    {
++    case MOVE_NONE:
++    case MOVE_STRUGGLE:
++    case MOVE_RECOVER:
++    case MOVE_SOFT_BOILED:
++    case MOVE_REST:
++    case MOVE_MILK_DRINK:
++    case MOVE_MOONLIGHT:
++    case MOVE_MORNING_SUN:
++    case MOVE_SYNTHESIS:
++    case MOVE_SWALLOW:
++    case MOVE_WISH:
++        return TRUE;
++    default:
++        return FALSE;
++    }
++}
++
++// Assegna al giocatore uno starter completamente casuale:
++// specie, natura, abilita', IV, mosse. Salva la specie in VAR_RESULT.
++void GiveRandomStarterMon(void)
++{
++    struct Pokemon *mon = AllocZeroed(sizeof(struct Pokemon));
++    u16 species;
++    u16 move;
++    u32 otId;
++    u32 personality;
++    u8 level = KAIZO_STARTER_LEVEL;
++    u8 i, j;
++    bool8 isShiny = (Random() % KAIZO_SHINY_ODDS) == 0;
++    bool8 duplicate;
++
++    do
++    {
++        species = 1 + (Random() % (NUM_SPECIES - 1));
++    } while (!Kaizo_IsValidSpecies(species));
++
++    otId = T1_READ_32(gSaveBlock2Ptr->playerTrainerId);
++    do
++    {
++        personality = Random32();
++    } while (isShiny != (GET_SHINY_VALUE(otId, personality) < 8));
++
++    if (isShiny)
++        level++;
++
++    CreateMon(mon, species, level, USE_RANDOM_IVS, TRUE, personality, OT_ID_PLAYER_ID, 0);
++
++    for (i = 0; i < MAX_MON_MOVES; i++)
++    {
++        do
++        {
++            move = 1 + (Random() % (MOVES_COUNT - 1));
++            duplicate = FALSE;
++            for (j = 0; j < i; j++)
++            {
++                if (GetMonData(mon, MON_DATA_MOVE1 + j) == move)
++                    duplicate = TRUE;
++            }
++        } while (Kaizo_IsBannedMove(move) || duplicate);
++        SetMonMoveSlot(mon, move, i);
++    }
++
++    if (GiveMonToPlayer(mon) == MON_GIVEN_TO_PARTY)
++    {
++        u16 nationalDexNum = SpeciesToNationalPokedexNum(species);
++        GetSetPokedexFlag(nationalDexNum, FLAG_SET_SEEN);
++        GetSetPokedexFlag(nationalDexNum, FLAG_SET_CAUGHT);
++    }
++
++    gSpecialVar_Result = species;
++    Free(mon);
++}
