@@ -118,6 +118,12 @@ PalletTown_ProfessorOaksLab_Text_OakChoosingBulbasaur::
     .string "So, {PLAYER}, you want to go with\n"
     .string "the GRASS POKéMON BULBASAUR?$"
 
+PalletTown_ProfessorOaksLab_Text_OakMysteryMon::
+    .string "Hmm... I can't tell which POKéMON\n"
+    .string "is inside this one.\p"
+    .string "Fate will decide for you, {PLAYER}.\n"
+    .string "Do you want this POKé BALL?$"
+
 PalletTown_ProfessorOaksLab_Text_OakThisMonIsEnergetic::
     .string "This POKéMON is really quite\n"
     .string "energetic!$"

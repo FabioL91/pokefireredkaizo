@@ -1082,11 +1082,15 @@ PalletTown_ProfessorOaksLab_EventScript_BulbasaurBall::
 PalletTown_ProfessorOaksLab_EventScript_ConfirmStarterChoice::
 	applymovement LOCALID_OAKS_LAB_PROF_OAK, Common_Movement_FaceRight
 	waitmovement 0
-	showmonpic PLAYER_STARTER_SPECIES, 10, 3
 	textcolor NPC_TEXT_COLOR_MALE
-	goto_if_eq PLAYER_STARTER_NUM, 0, PalletTown_ProfessorOaksLab_EventScript_ConfirmBulbasaur
-	goto_if_eq PLAYER_STARTER_NUM, 1, PalletTown_ProfessorOaksLab_EventScript_ConfirmSquirtle
-	goto_if_eq PLAYER_STARTER_NUM, 2, PalletTown_ProfessorOaksLab_EventScript_ConfirmCharmander
+	msgbox PalletTown_ProfessorOaksLab_Text_OakMysteryMon, MSGBOX_YESNO
+	goto_if_eq VAR_RESULT, YES, PalletTown_ProfessorOaksLab_EventScript_ChoseStarter
+	goto_if_eq VAR_RESULT, NO, PalletTown_ProfessorOaksLab_EventScript_DeclinedStarterNoPic
+	end
+
+PalletTown_ProfessorOaksLab_EventScript_DeclinedStarterNoPic::
+	call EventScript_RestorePrevTextColor
+	release
 	end
 
 PalletTown_ProfessorOaksLab_EventScript_ConfirmBulbasaur::
@@ -1113,13 +1117,13 @@ PalletTown_ProfessorOaksLab_EventScript_DeclinedStarter::
 	end
 
 PalletTown_ProfessorOaksLab_EventScript_ChoseStarter::
-	hidemonpic
 	removeobject VAR_LAST_TALKED
 	msgbox PalletTown_ProfessorOaksLab_Text_OakThisMonIsEnergetic
 	call EventScript_RestorePrevTextColor
 	setflag FLAG_SYS_POKEMON_GET
 	setflag FLAG_PALLET_LADY_NOT_BLOCKING_SIGN
-	givemon PLAYER_STARTER_SPECIES, 5
+	special GiveRandomStarterMon
+	copyvar PLAYER_STARTER_SPECIES, VAR_RESULT
 	copyvar VAR_STARTER_MON, PLAYER_STARTER_NUM
 	bufferspeciesname STR_VAR_1, PLAYER_STARTER_SPECIES
 	message PalletTown_ProfessorOaksLab_Text_ReceivedMonFromOak

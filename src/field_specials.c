@@ -2553,3 +2553,96 @@ static void Task_WingFlapSound(u8 taskId)
     if (data[0] == gSpecialVar_0x8004 - 1)
         DestroyTask(taskId);
 }
+
+// ============================================================================
+// KAIZO: starter casuale
+// Impostazioni facili da cambiare:
+// ============================================================================
+#define KAIZO_STARTER_LEVEL        8     // livello dello starter (shiny: +1)
+#define KAIZO_SHINY_ODDS           256   // uno shiny ogni N starter generati
+
+// Specie valide in Gen 3: 1-251 (Gen 1-2) e 277-411 (Gen 3).
+// Le posizioni 252-276 sono segnaposto vuoti e non vanno mai usate.
+static bool8 Kaizo_IsValidSpecies(u16 species)
+{
+    return (species >= SPECIES_BULBASAUR && species <= SPECIES_CELEBI)
+        || (species >= SPECIES_TREECKO && species <= SPECIES_CHIMECHO);
+}
+
+// Mosse escluse dal moveset casuale dello starter (mosse di cura bandite).
+static bool8 Kaizo_IsBannedMove(u16 move)
+{
+    switch (move)
+    {
+    case MOVE_NONE:
+    case MOVE_STRUGGLE:
+    case MOVE_RECOVER:
+    case MOVE_SOFT_BOILED:
+    case MOVE_REST:
+    case MOVE_MILK_DRINK:
+    case MOVE_MOONLIGHT:
+    case MOVE_MORNING_SUN:
+    case MOVE_SYNTHESIS:
+    case MOVE_SWALLOW:
+    case MOVE_WISH:
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
+// Assegna al giocatore uno starter completamente casuale:
+// specie, natura, abilita', IV, mosse. Salva la specie in VAR_RESULT.
+void GiveRandomStarterMon(void)
+{
+    struct Pokemon *mon = AllocZeroed(sizeof(struct Pokemon));
+    u16 species;
+    u16 move;
+    u32 otId;
+    u32 personality;
+    u8 level = KAIZO_STARTER_LEVEL;
+    u8 i, j;
+    bool8 isShiny = (Random() % KAIZO_SHINY_ODDS) == 0;
+    bool8 duplicate;
+
+    do
+    {
+        species = 1 + (Random() % (NUM_SPECIES - 1));
+    } while (!Kaizo_IsValidSpecies(species));
+
+    otId = T1_READ_32(gSaveBlock2Ptr->playerTrainerId);
+    do
+    {
+        personality = Random32();
+    } while (isShiny != (GET_SHINY_VALUE(otId, personality) < 8));
+
+    if (isShiny)
+        level++;
+
+    CreateMon(mon, species, level, USE_RANDOM_IVS, TRUE, personality, OT_ID_PLAYER_ID, 0);
+
+    for (i = 0; i < MAX_MON_MOVES; i++)
+    {
+        do
+        {
+            move = 1 + (Random() % (MOVES_COUNT - 1));
+            duplicate = FALSE;
+            for (j = 0; j < i; j++)
+            {
+                if (GetMonData(mon, MON_DATA_MOVE1 + j) == move)
+                    duplicate = TRUE;
+            }
+        } while (Kaizo_IsBannedMove(move) || duplicate);
+        SetMonMoveSlot(mon, move, i);
+    }
+
+    if (GiveMonToPlayer(mon) == MON_GIVEN_TO_PARTY)
+    {
+        u16 nationalDexNum = SpeciesToNationalPokedexNum(species);
+        GetSetPokedexFlag(nationalDexNum, FLAG_SET_SEEN);
+        GetSetPokedexFlag(nationalDexNum, FLAG_SET_CAUGHT);
+    }
+
+    gSpecialVar_Result = species;
+    Free(mon);
+}
